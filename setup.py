@@ -6,7 +6,7 @@ AWS_REGION = "us-east-1"
 BUCKET_NAME = "audio-transcriber-ingress-bucket"
 QUEUE_NAME = "audio-transcriber-ingress-queue"
 IAM_USER_NAME = "audio-transcriber-ingress-user"
-IAM_POLICY_NAME = "AudioTranscriberPolicy"
+IAM_POLICY_NAME = "AudioTranscriberIngressPolicy"
 
 # Initialize AWS Clients
 s3 = boto3.client("s3", region_name=AWS_REGION)
@@ -30,14 +30,23 @@ def create_s3_bucket():
     except Exception as e:
         print(f"⚠️ Error creating S3 bucket: {e}")
 
-
 def create_sqs_queue():
-    """Create an SQS queue and return its ARN."""
+    """Create an SQS queue with 5-minute visibility timeout and 14-day retention."""
     try:
         print(f"Creating SQS queue: {QUEUE_NAME}...")
-        response = sqs.create_queue(QueueName=QUEUE_NAME)
+
+        response = sqs.create_queue(
+            QueueName=QUEUE_NAME,
+            Attributes={
+                "VisibilityTimeout": "300",  # 5 minutes
+                "MessageRetentionPeriod": "1209600"  # 14 days
+            }
+        )
+        
         queue_url = response["QueueUrl"]
-        queue_attributes = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])
+        queue_attributes = sqs.get_queue_attributes(
+            QueueUrl=queue_url, AttributeNames=["QueueArn"]
+        )
         queue_arn = queue_attributes["Attributes"]["QueueArn"]
         print(f"✅ SQS queue created! ARN: {queue_arn}")
         return queue_url, queue_arn
@@ -60,7 +69,10 @@ def attach_sqs_policy(queue_arn):
     }
     print("🔹 Setting SQS policy to allow S3 events...")
     queue_url, _ = create_sqs_queue()
-    sqs.set_queue_attributes(QueueUrl=queue_url, Attributes={"Policy": json.dumps(sqs_policy)})
+    sqs.set_queue_attributes(
+        QueueUrl=queue_url,
+        Attributes={"Policy": json.dumps(sqs_policy)}
+    )
     print("✅ SQS policy set!")
 
 def configure_s3_notifications(queue_arn):
@@ -74,10 +86,13 @@ def configure_s3_notifications(queue_arn):
         ]
     }
     print("🔹 Configuring S3 event notifications...")
-    s3.put_bucket_notification_configuration(Bucket=BUCKET_NAME, NotificationConfiguration=s3_notification_config)
+    s3.put_bucket_notification_configuration(
+        Bucket=BUCKET_NAME,
+        NotificationConfiguration=s3_notification_config
+    )
     print("✅ S3 event notifications configured!")
 
-def create_iam_user():
+def create_iam_user(queue_arn):
     """Create an IAM user with access to upload to S3 and process SQS messages."""
     try:
         print(f"Creating IAM user: {IAM_USER_NAME}...")
@@ -94,7 +109,7 @@ def create_iam_user():
                 {
                     "Effect": "Allow",
                     "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"],
-                    "Resource": f"arn:aws:sqs:{AWS_REGION}:*:my-audio-queue"
+                    "Resource": f"arn:aws:sqs:{AWS_REGION}:*: {QUEUE_NAME}"
                 }
             ]
         }
@@ -125,7 +140,7 @@ def main():
     queue_url, queue_arn = create_sqs_queue()
     attach_sqs_policy(queue_arn)
     configure_s3_notifications(queue_arn)
-    create_iam_user()
+    create_iam_user(queue_arn)
     print("🚀 AWS setup complete!")
 
 if __name__ == "__main__":
