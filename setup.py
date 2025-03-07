@@ -1,14 +1,12 @@
 import boto3
 import json
 
-# 🔹 Change these variables as needed
 AWS_REGION = "us-east-1"
 BUCKET_NAME = "audio-transcriber-ingress-bucket"
 QUEUE_NAME = "audio-transcriber-ingress-queue"
 IAM_USER_NAME = "audio-transcriber-ingress-user"
 IAM_POLICY_NAME = "AudioTranscriberIngressPolicy"
 
-# Initialize AWS Clients
 s3 = boto3.client("s3", region_name=AWS_REGION)
 sqs = boto3.client("sqs", region_name=AWS_REGION)
 iam = boto3.client("iam")
